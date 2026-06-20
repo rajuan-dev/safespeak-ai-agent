@@ -1,0 +1,2 @@
+"""SafeSpeak AI agent service."""
+

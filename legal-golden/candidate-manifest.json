@@ -1,0 +1,154 @@
+{
+  "fixtures": [
+    {
+      "id": "racial-discrimination-act-1975-c19",
+      "fixtureType": "candidate_real",
+      "pdfPath": "reviewed/racial-discrimination-act-1975-c19.pdf",
+      "title": "Racial Discrimination Act 1975",
+      "jurisdiction": "Cth",
+      "sourceUrl": "https://www.legislation.gov.au/C2004A00274/2022-12-13/2022-12-13/text/original/pdf",
+      "sha256": "0d8905542a50e2505179beb5364eabd7a58d5f3ad3cd565cc35fb4ef172ecab3",
+      "expectations": {
+        "minimumPages": 58,
+        "minimumSections": 50,
+        "requiredText": [
+          "Racial discrimination to be unlawful",
+          "Rights to equality before the law",
+          "Offensive behaviour because of race"
+        ],
+        "expectedSections": [
+          {
+            "sectionRef": "9",
+            "page": 10,
+            "status": "in_force"
+          },
+          {
+            "sectionRef": "10",
+            "page": 11,
+            "status": "in_force"
+          },
+          {
+            "sectionRef": "15",
+            "page": 14,
+            "status": "in_force"
+          },
+          {
+            "sectionRef": "18C",
+            "page": 18,
+            "status": "in_force"
+          },
+          {
+            "sectionRef": "18D",
+            "page": 19,
+            "status": "in_force"
+          }
+        ],
+        "tableCellValues": [],
+        "scheduleRequired": true,
+        "versionDate": "2022-12-13"
+      },
+      "questions": [
+        {
+          "question": "What does section 9 say about racial discrimination?",
+          "expectedSectionRef": "9",
+          "expectedRank": 1
+        },
+        {
+          "question": "What right is protected by section 10?",
+          "expectedSectionRef": "10",
+          "expectedRank": 1
+        },
+        {
+          "question": "What does section 15 cover in employment?",
+          "expectedSectionRef": "15",
+          "expectedRank": 1
+        },
+        {
+          "question": "What conduct is addressed by section 18C?",
+          "expectedSectionRef": "18C",
+          "expectedRank": 1
+        },
+        {
+          "question": "What exemptions are in section 18D?",
+          "expectedSectionRef": "18D",
+          "expectedRank": 1
+        }
+      ]
+    },
+    {
+      "id": "charter-human-rights-responsibilities-act-2006-vic-v015",
+      "fixtureType": "candidate_real",
+      "pdfPath": "reviewed/charter-human-rights-responsibilities-act-2006-vic-v015.pdf",
+      "title": "Charter of Human Rights and Responsibilities Act 2006",
+      "jurisdiction": "Victoria",
+      "sourceUrl": "https://www.legislation.vic.gov.au/in-force/acts/charter-human-rights-and-responsibilities-act-2006/015",
+      "sha256": "93be604602181546b499ebd086458cb2333aac9677c9c0ecf9275c6cf8686890",
+      "expectations": {
+        "minimumPages": 46,
+        "minimumSections": 60,
+        "requiredText": [
+          "Human rights—what they are and when they may be limited",
+          "Recognition and equality before the law",
+          "Conduct of public authorities"
+        ],
+        "expectedSections": [
+          {
+            "sectionRef": "7",
+            "page": 13,
+            "status": "in_force"
+          },
+          {
+            "sectionRef": "8",
+            "page": 13,
+            "status": "in_force"
+          },
+          {
+            "sectionRef": "13",
+            "page": 15,
+            "status": "amended"
+          },
+          {
+            "sectionRef": "15",
+            "page": 16,
+            "status": "in_force"
+          },
+          {
+            "sectionRef": "38",
+            "page": 30,
+            "status": "in_force"
+          }
+        ],
+        "tableCellValues": [],
+        "scheduleRequired": true,
+        "versionDate": "2022-06-01"
+      },
+      "questions": [
+        {
+          "question": "What does section 7 say about when human rights may be limited?",
+          "expectedSectionRef": "7",
+          "expectedRank": 1
+        },
+        {
+          "question": "What equality rights are recognised by section 8?",
+          "expectedSectionRef": "8",
+          "expectedRank": 1
+        },
+        {
+          "question": "What privacy and reputation right is protected by section 13?",
+          "expectedSectionRef": "13",
+          "expectedRank": 1
+        },
+        {
+          "question": "What freedom of expression is protected by section 15?",
+          "expectedSectionRef": "15",
+          "expectedRank": 1
+        },
+        {
+          "question": "What does section 38 require of public authorities?",
+          "expectedSectionRef": "38",
+          "expectedRank": 1
+        }
+      ]
+    }
+  ]
+}

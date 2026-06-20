@@ -1,0 +1,57 @@
+{
+  "fixtures": [
+    {
+      "id": "replace-with-reviewed-act-id",
+      "fixtureType": "reviewed_real",
+      "pdfPath": "reviewed/replace-with-pinned-act.pdf",
+      "title": "Replace with exact Act title and consolidation date",
+      "jurisdiction": "Cth",
+      "sourceUrl": "https://www.legislation.gov.au/",
+      "sha256": "replace-with-64-character-sha256",
+      "expectations": {
+        "minimumPages": 1,
+        "minimumSections": 1,
+        "requiredText": [
+          "replace with a legally reviewed definition"
+        ],
+        "expectedSections": [
+          {
+            "sectionRef": "1",
+            "page": 1,
+            "status": "in_force"
+          }
+        ],
+        "tableCellValues": [],
+        "scheduleRequired": false,
+        "versionDate": "YYYY-MM-DD"
+      },
+      "questions": [
+        {
+          "question": "Replace with reviewed question 1",
+          "expectedSectionRef": "1",
+          "expectedRank": 1
+        },
+        {
+          "question": "Replace with reviewed question 2",
+          "expectedSectionRef": "1",
+          "expectedRank": 1
+        },
+        {
+          "question": "Replace with reviewed question 3",
+          "expectedSectionRef": "1",
+          "expectedRank": 1
+        },
+        {
+          "question": "Replace with reviewed question 4",
+          "expectedSectionRef": "1",
+          "expectedRank": 1
+        },
+        {
+          "question": "Replace with reviewed question 5",
+          "expectedSectionRef": "1",
+          "expectedRank": 1
+        }
+      ]
+    }
+  ]
+}

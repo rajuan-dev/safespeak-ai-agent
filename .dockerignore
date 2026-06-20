@@ -1,0 +1,11 @@
+.env
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+legal-golden/generated
+legal-golden/reports
+storage
+

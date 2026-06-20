@@ -1,0 +1,54 @@
+{
+  "fixtures": [
+    {
+      "id": "synthetic-example-safety-act",
+      "fixtureType": "synthetic",
+      "pdfPath": "generated/example-safety-act-2026.pdf",
+      "title": "Example Safety Act 2026",
+      "jurisdiction": "Cth",
+      "sourceUrl": "https://example.invalid/example-safety-act-2026",
+      "expectations": {
+        "minimumPages": 2,
+        "minimumSections": 5,
+        "requiredText": [
+          "protected record",
+          "50 penalty units",
+          "Schedule 1"
+        ],
+        "expectedSections": [
+          {
+            "sectionRef": "3(1)(a)(i)",
+            "page": 1,
+            "status": "in_force"
+          },
+          {
+            "sectionRef": "4",
+            "page": 2,
+            "status": "repealed"
+          }
+        ],
+        "tableCellValues": [],
+        "scheduleRequired": true,
+        "versionDate": "2026-06-21"
+      },
+      "questions": [
+        {
+          "question": "What does section 3(1)(a)(i) require?",
+          "expectedSectionRef": "3(1)(a)(i)",
+          "expectedRank": 1
+        },
+        {
+          "question": "Which section contains the former notice provision?",
+          "expectedSectionRef": "4",
+          "expectedRank": 1
+        },
+        {
+          "question": "Where is protected record defined?",
+          "expectedSectionRef": "2(1)",
+          "expectedRank": 1
+        }
+      ]
+    }
+  ]
+}
+
