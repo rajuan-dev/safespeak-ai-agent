@@ -97,3 +97,28 @@ async def require_ai_consent(
             "process_with_ai consent is required for AI processing",
         )
     return principal
+
+
+async def require_ai_or_transcription_consent(
+    principal: Annotated[Principal, Depends(require_user_or_session)],
+) -> Principal:
+    owner_filter: dict[str, ObjectId]
+    if principal.user_id and ObjectId.is_valid(principal.user_id):
+        owner_filter = {"userId": ObjectId(principal.user_id)}
+    elif principal.session_id and ObjectId.is_valid(principal.session_id):
+        owner_filter = {"sessionId": ObjectId(principal.session_id)}
+    else:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid authentication principal")
+
+    record = await get_database()["consentrecords"].find_one(
+        owner_filter,
+        sort=[("version", -1)],
+        projection={"flags": 1},
+    )
+    flags = (record or {}).get("flags") or {}
+    if not flags.get("process_with_ai") and not flags.get("transcribe_audio"):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "process_with_ai or transcribe_audio consent is required for transcription",
+        )
+    return principal

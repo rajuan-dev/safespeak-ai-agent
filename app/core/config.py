@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-5.2"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-large"
+    OPENAI_TRANSCRIPTION_MODEL: str = "gpt-4o-transcribe"
+    OPENAI_TTS_MODEL: str = "gpt-4o-mini-tts"
+    OPENAI_TTS_VOICE: str = "alloy"
+    ASR_MAX_FILE_SIZE_BYTES: int = 26_214_400
 
     PINECONE_API_KEY: str | None = None
     PINECONE_INDEX_NAME: str = "safespeak-legislation-dev"

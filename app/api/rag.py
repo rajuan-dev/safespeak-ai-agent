@@ -42,7 +42,6 @@ async def timeline_assistant(
     request: TimelineAssistantInput,
     _principal: Annotated[Principal, Depends(require_ai_consent)],
 ):
-    assert_legal_runtime_ready()
     result = await run_timeline_assistant(request)
     return success(
         "Timeline assistant response generated",
