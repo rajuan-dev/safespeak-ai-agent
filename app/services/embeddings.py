@@ -13,13 +13,13 @@ class EmbeddingService:
             else None
         )
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
         if not self.client:
             raise RuntimeError("OPENAI_API_KEY is not configured")
         vectors: list[list[float]] = []
         for start in range(0, len(texts), 64):
             response = await self.client.embeddings.create(
-                model=self.model,
+                model=model or self.model,
                 input=texts[start : start + 64],
             )
             vectors.extend(item.embedding for item in response.data)

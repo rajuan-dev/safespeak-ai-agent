@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_BYTES: int = 52_428_800
 
     BACKEND_API_BASE_URL: str = "http://localhost:5000/api/v1"
+    AI_AGENT_INTERNAL_TOKEN: str = ""
 
     @field_validator("API_PREFIX")
     @classmethod

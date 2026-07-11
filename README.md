@@ -117,6 +117,10 @@ Restart Next.js and Vite after changing environment files.
 - `POST /api/v1/ai/translate`
 - `POST /api/v1/ai/redact-pii`
 
+Backend-only execution endpoints are available under `/api/v1/internal/ai` for model
+completion and embeddings. They require `X-AI-Agent-Token` and must not be exposed to
+browser clients.
+
 Admin endpoints accept the existing SafeSpeak bearer token. Public AI/RAG endpoints
 accept either that bearer token or the existing `X-SafeSpeak-Session` token.
 

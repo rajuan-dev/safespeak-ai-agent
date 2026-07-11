@@ -1,4 +1,5 @@
 import hashlib
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated
@@ -97,6 +98,18 @@ async def require_ai_consent(
             "process_with_ai consent is required for AI processing",
         )
     return principal
+
+
+async def require_internal_service(
+    x_ai_agent_token: Annotated[str | None, Header(alias="X-AI-Agent-Token")] = None,
+) -> None:
+    expected = get_settings().AI_AGENT_INTERNAL_TOKEN
+    if (
+        not expected
+        or not x_ai_agent_token
+        or not secrets.compare_digest(x_ai_agent_token, expected)
+    ):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid internal service token")
 
 
 async def require_ai_or_transcription_consent(
