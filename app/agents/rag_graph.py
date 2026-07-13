@@ -20,6 +20,23 @@ class RagState(TypedDict, total=False):
     output: dict[str, Any]
 
 
+def _result_categories(results: list[dict[str, Any]]) -> set[str]:
+    return {str(result.get("sourceCategory") or "") for result in results}
+
+
+def _source_data_label(results: list[dict[str, Any]]) -> str:
+    categories = _result_categories(results)
+    if categories and categories <= {"official_support_source"}:
+        return "approved support source data"
+    if "official_support_source" in categories:
+        return "approved source data"
+    return "approved legal data"
+
+
+def _not_found_message(results: list[dict[str, Any]]) -> str:
+    return f"The information was not found in the available {_source_data_label(results)}."
+
+
 def _citation(result: dict[str, Any]) -> dict[str, Any]:
     return {
         "sourceId": result.get("sourceId"),
@@ -45,6 +62,23 @@ def _citation(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _dedupe_citations(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str, str, str]] = set()
+    deduped: list[dict[str, Any]] = []
+    for citation in citations:
+        key = (
+            str(citation.get("sourceId") or ""),
+            str(citation.get("sectionRef") or ""),
+            str(citation.get("page") or citation.get("pageStart") or ""),
+            str(citation.get("url") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(citation)
+    return deduped
+
+
 async def retrieve(state: RagState) -> RagState:
     request = state["request"]
     search = SearchInput.model_validate(
@@ -60,7 +94,7 @@ async def generate(state: RagState) -> RagState:
     if not results:
         return {
             "output": {
-                "answer": "The information was not found in the available approved legal data.",
+                "answer": _not_found_message(results),
                 "disclaimer": DEFAULT_RAG_DISCLAIMER,
                 "citations": [],
                 "sourceCategoriesUsed": [],
@@ -86,33 +120,36 @@ async def generate(state: RagState) -> RagState:
         for index, item in enumerate(results, start=1)
     )
     template_prompt_block = build_template_prompt_block(resolved_templates)
+    source_data_label = _source_data_label(results)
+    not_found_message = _not_found_message(results)
     generated = await llm_service.json_completion(
         system=(
-            "You are SafeSpeak's Australian legal information assistant. Answer only from the "
-            "provided source text. Preserve legal qualifications and defined terms. Never invent "
-            "a section, date, penalty, exception, or legal conclusion. If the sources do not "
-            "contain the answer, say exactly that it was not found in the available legal data. "
-            "Return JSON with keys answer and confidence. Use plain language but do not alter the "
-            "legal meaning. Every factual or legal sentence must end with one or more markers such "
-            "as [SOURCE 1]. Do not cite a source that does not directly support that sentence. "
-            "If source-specific response templates are provided, treat them as wording guidance "
-            "only and never as evidence."
+            "You are SafeSpeak's grounded source assistant for Australian legal and support "
+            "information. Answer only from the provided source text. Preserve qualifications, "
+            "definitions, and source meaning. Never invent a section, date, penalty, exception, "
+            "support service rule, or legal conclusion. If the sources do not contain the answer, "
+            f"say exactly: {not_found_message} Return JSON with keys answer and confidence. Use "
+            "plain language but do not alter the source meaning. Every factual sentence must end "
+            "with one or more markers such as [SOURCE 1]. Do not cite a source that does not "
+            "directly support that sentence. If source-specific response templates are provided, "
+            "treat them as wording guidance only and never as evidence."
         ),
         user=(
             f"Question:\n{request.question}\n\n"
+            f"Source data type:\n{source_data_label}\n\n"
             f"Source template guidance:\n{template_prompt_block}\n\n"
-            f"Approved legal sources:\n{context}"
+            f"Approved sources:\n{context}"
         ),
         fallback={
-            "answer": "The information was not found in the available approved legal data.",
+            "answer": not_found_message,
             "confidence": "low",
         },
     )
     answer = str(generated.get("answer", "")).strip()
-    if re.search(r"\bnot found in the available (?:approved )?legal data\b", answer, re.I):
+    if re.search(r"\bnot found in the available (?:approved )?(?:legal|support|source) data\b", answer, re.I):
         return {
             "output": {
-                "answer": "The information was not found in the available approved legal data.",
+                "answer": not_found_message,
                 "disclaimer": DEFAULT_RAG_DISCLAIMER,
                 "citations": [],
                 "sourceCategoriesUsed": [],
@@ -125,7 +162,7 @@ async def generate(state: RagState) -> RagState:
     if not verification.supported:
         return {
             "output": {
-                "answer": "The information was not found in the available approved legal data.",
+                "answer": not_found_message,
                 "disclaimer": DEFAULT_RAG_DISCLAIMER,
                 "citations": [],
                 "sourceCategoriesUsed": [],
@@ -139,11 +176,13 @@ async def generate(state: RagState) -> RagState:
             }
         }
 
+    citations = _dedupe_citations([_citation(result) for result in results])
+
     return {
         "output": {
             "answer": answer,
             "disclaimer": resolved_templates.get("disclaimerPhrasing") or DEFAULT_RAG_DISCLAIMER,
-            "citations": [_citation(result) for result in results],
+            "citations": citations,
             "sourceCategoriesUsed": sorted(
                 {str(result.get("sourceCategory")) for result in results}
             ),

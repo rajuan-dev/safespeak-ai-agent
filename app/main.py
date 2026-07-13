@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
-from app.api import ai, extraction, health, internal_ai, knowledge, rag
+from app.api import ai, extraction, health, internal_ai, internal_rag, knowledge, rag
 from app.core.config import get_settings
 from app.core.database import close_database
 from app.core.responses import failure
@@ -111,3 +111,4 @@ app.include_router(rag.router, prefix=settings.API_PREFIX)
 app.include_router(knowledge.router, prefix=settings.API_PREFIX)
 app.include_router(ai.router, prefix=settings.API_PREFIX)
 app.include_router(internal_ai.router, prefix=settings.API_PREFIX)
+app.include_router(internal_rag.router, prefix=settings.API_PREFIX)

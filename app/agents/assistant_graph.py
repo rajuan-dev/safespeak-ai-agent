@@ -47,6 +47,7 @@ class AssistantState(TypedDict, total=False):
 
 async def retrieve_support(state: AssistantState) -> AssistantState:
     request = state["request"]
+    normalized_message = request.message.casefold()
     classification = classify_intent(request.message)
     response_mode = response_mode_for_intent(classification["intent"])
     turn_policy = build_turn_policy(classification["intent"], request.message, response_mode)
@@ -70,9 +71,16 @@ async def retrieve_support(state: AssistantState) -> AssistantState:
             hybrid_search(legal_search),
             hybrid_search(support_search),
         )
+        support_first = any(
+            marker in normalized_message
+            for marker in ("guidance", "guideline", "uploaded", "document", "pdf", "report")
+        )
         combined: list[dict[str, Any]] = []
         seen_chunk_ids: set[str] = set()
-        for item in [*legal_results, *support_results]:
+        ordered_results = (
+            [*support_results, *legal_results] if support_first else [*legal_results, *support_results]
+        )
+        for item in ordered_results:
             chunk_id = str(item.get("chunkId") or "")
             if chunk_id and chunk_id in seen_chunk_ids:
                 continue
@@ -106,6 +114,23 @@ def _citation_from_result(item: dict[str, Any]) -> dict[str, Any]:
         "amendmentStatus": item.get("amendmentStatus"),
         "lastUpdated": item.get("lastUpdated"),
     }
+
+
+def _dedupe_citations(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str, str, str]] = set()
+    deduped: list[dict[str, Any]] = []
+    for citation in citations:
+        key = (
+            str(citation.get("sourceId") or ""),
+            str(citation.get("sectionRef") or ""),
+            str(citation.get("page") or citation.get("pageStart") or ""),
+            str(citation.get("url") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(citation)
+    return deduped
 
 
 def _clean_timeline(value: Any, fallback: dict[str, Any]) -> dict[str, Any]:
@@ -167,7 +192,7 @@ async def build_turn(state: AssistantState) -> AssistantState:
     turn_policy = build_turn_policy(intent, request.message, response_mode)
     response_plan = build_response_plan(intent, request.message, turn_policy)
     context = "\n\n".join(item["text"] for item in results)
-    citations = [_citation_from_result(item) for item in results]
+    citations = _dedupe_citations([_citation_from_result(item) for item in results])
     resolved_templates = resolve_source_templates(results)
     template_prompt_block = build_template_prompt_block(resolved_templates)
     rag_status = (
