@@ -22,6 +22,7 @@ class KnowledgeSourceCreate(StrictModel):
     legislationName: str | None = Field(default=None, max_length=200)
     sourceType: str
     sourceAuthority: str | None = Field(default=None, max_length=200)
+    authority: str | None = Field(default=None, max_length=200)
     officialUrl: HttpUrl | None = None
     country: str | None = Field(default=None, max_length=80)
     language: str = Field(default="en", min_length=2, max_length=12)
@@ -30,9 +31,11 @@ class KnowledgeSourceCreate(StrictModel):
     publisher: str = Field(min_length=1, max_length=200)
     licenseStatus: str = Field(min_length=1, max_length=200)
     lastUpdated: datetime | None = None
+    sourceDate: datetime | None = None
     lastVerifiedAt: datetime | None = None
     nextReviewAt: datetime | None = None
     nextRefreshAt: datetime | None = None
+    refreshCadence: str | None = Field(default=None, max_length=80)
     legalReviewed: bool = False
     active: bool = True
     sourceReliability: str = "unknown"
@@ -56,6 +59,7 @@ class KnowledgeSourceUpdate(StrictModel):
     legislationName: str | None = Field(default=None, max_length=200)
     sourceType: str | None = None
     sourceAuthority: str | None = Field(default=None, max_length=200)
+    authority: str | None = Field(default=None, max_length=200)
     officialUrl: HttpUrl | None = None
     country: str | None = Field(default=None, max_length=80)
     language: str | None = Field(default=None, min_length=2, max_length=12)
@@ -64,9 +68,11 @@ class KnowledgeSourceUpdate(StrictModel):
     publisher: str | None = Field(default=None, min_length=1, max_length=200)
     licenseStatus: str | None = Field(default=None, min_length=1, max_length=200)
     lastUpdated: datetime | None = None
+    sourceDate: datetime | None = None
     lastVerifiedAt: datetime | None = None
     nextReviewAt: datetime | None = None
     nextRefreshAt: datetime | None = None
+    refreshCadence: str | None = Field(default=None, max_length=80)
     legalReviewed: bool | None = None
     active: bool | None = None
     sourceReliability: str | None = None

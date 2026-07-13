@@ -2,7 +2,11 @@ import hashlib
 import io
 import re
 import shutil
+import zipfile
 from collections.abc import Iterable
+from html import unescape
+from pathlib import Path
+from xml.etree import ElementTree
 
 import fitz
 from fastapi import HTTPException, status
@@ -301,4 +305,138 @@ def extract_pdf(data: bytes, file_name: str) -> ExtractedDocument:
         blocks=blocks,
         tables=tables,
         warnings=warnings,
+    )
+
+
+def _plain_text_document(
+    data: bytes,
+    file_name: str,
+    *,
+    extraction_method: str,
+    warnings: list[str] | None = None,
+) -> ExtractedDocument:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        text = data.decode("utf-8", errors="replace")
+        warnings = [*(warnings or []), "Document contained non-UTF8 characters and was decoded with replacement."]
+
+    normalized_text = text.strip()
+
+    return ExtractedDocument(
+        fileName=file_name,
+        sha256=hashlib.sha256(data).hexdigest(),
+        pageCount=1,
+        extractionMethod=extraction_method,
+        rawText=normalized_text,
+        markdown=normalized_text,
+        pages=[
+            ExtractedPage(
+                number=1,
+                text=normalized_text,
+                spans=[],
+                warnings=warnings or [],
+            )
+        ],
+        blocks=[
+            TextBlock(
+                text=normalized_text,
+                pageStart=1,
+                pageEnd=1,
+                bbox=BoundingBox(x0=0, y0=0, x1=0, y1=0),
+                fontSize=0,
+                isBold=False,
+                blockType="text",
+            )
+        ]
+        if normalized_text
+        else [],
+        tables=[],
+        warnings=warnings or [],
+    )
+
+
+def extract_docx(data: bytes, file_name: str) -> ExtractedDocument:
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            document_xml = archive.read("word/document.xml")
+    except KeyError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "DOCX document is missing word/document.xml",
+        ) from exc
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Uploaded DOCX file could not be opened",
+        ) from exc
+
+    root = ElementTree.fromstring(document_xml)
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    paragraphs: list[str] = []
+    for paragraph in root.findall(".//w:p", namespace):
+        runs = [
+            "".join(node.itertext()).strip()
+            for node in paragraph.findall(".//w:t", namespace)
+            if "".join(node.itertext()).strip()
+        ]
+        if runs:
+            paragraphs.append("".join(runs))
+
+    text = "\n\n".join(paragraphs).strip()
+    return _plain_text_document(
+        text.encode("utf-8"),
+        file_name,
+        extraction_method="docx_xml",
+    )
+
+
+def extract_text_document(data: bytes, file_name: str) -> ExtractedDocument:
+    extension = Path(file_name).suffix.lower()
+    text_warnings: list[str] = []
+    if extension in {".html", ".htm"}:
+        html_text = data.decode("utf-8", errors="replace")
+        stripped = re.sub(r"(?is)<(script|style).*?>.*?</\\1>", " ", html_text)
+        stripped = re.sub(r"(?s)<[^>]+>", " ", stripped)
+        stripped = unescape(re.sub(r"[ \t\r\f\v]+", " ", stripped))
+        return _plain_text_document(
+            stripped.encode("utf-8"),
+            file_name,
+            extraction_method="html_text",
+        )
+
+    if extension == ".json":
+        text_warnings.append("JSON file was indexed as plain text.")
+    elif extension == ".csv":
+        text_warnings.append("CSV file was indexed as plain text.")
+    elif extension == ".md":
+        text_warnings.append("Markdown file was indexed without rendering.")
+
+    return _plain_text_document(
+        data,
+        file_name,
+        extraction_method="plain_text",
+        warnings=text_warnings,
+    )
+
+
+def extract_document(data: bytes, file_name: str, mime_type: str | None = None) -> ExtractedDocument:
+    extension = Path(file_name).suffix.lower()
+    normalized_mime = (mime_type or "").lower()
+
+    if extension == ".pdf" or normalized_mime == "application/pdf":
+        return extract_pdf(data, file_name)
+
+    if extension == ".docx" or "officedocument.wordprocessingml.document" in normalized_mime:
+        return extract_docx(data, file_name)
+
+    if extension in {".txt", ".md", ".html", ".htm", ".csv", ".json"} or normalized_mime.startswith("text/") or normalized_mime in {
+        "application/json",
+        "text/csv",
+    }:
+        return extract_text_document(data, file_name)
+
+    raise HTTPException(
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "Supported document types are PDF, DOCX, TXT, MD, HTML, CSV, and JSON",
     )

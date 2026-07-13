@@ -49,11 +49,10 @@ class ExtractedDocument(BaseModel):
     fileName: str
     sha256: str
     pageCount: int
-    extractionMethod: Literal["pymupdf", "pymupdf_ocr"]
+    extractionMethod: str
     rawText: str
     markdown: str
     pages: list[ExtractedPage]
     blocks: list[TextBlock]
     tables: list[ExtractedTable]
     warnings: list[str] = Field(default_factory=list)
-

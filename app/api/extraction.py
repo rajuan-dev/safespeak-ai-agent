@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, UploadFile
 
 from app.core.responses import success
 from app.core.security import Principal, require_content_admin
-from app.services.extraction import extract_pdf
+from app.services.extraction import extract_document
 
 router = APIRouter(prefix="/extract", tags=["extraction"])
 
@@ -15,6 +15,5 @@ async def extract_document(
     _principal: Annotated[Principal, Depends(require_content_admin)],
 ):
     data = await file.read()
-    extracted = extract_pdf(data, file.filename or "document.pdf")
-    return success("PDF extraction completed", extracted.model_dump(mode="json"))
-
+    extracted = extract_document(data, file.filename or "document.pdf", file.content_type)
+    return success("Document extraction completed", extracted.model_dump(mode="json"))

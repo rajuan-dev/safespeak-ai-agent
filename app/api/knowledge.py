@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 
 from app.core.responses import success
 from app.core.security import Principal, require_content_admin
@@ -93,8 +93,13 @@ async def source_document(
     source_id: str,
     _principal: Admin,
     file: Annotated[UploadFile, File(...)],
+    ingest_immediately: Annotated[bool, Form(alias="ingestImmediately")] = True,
 ):
-    result = await upload_and_ingest(source_id, file)
+    result = await upload_and_ingest(
+        source_id,
+        file,
+        ingest_immediately=ingest_immediately,
+    )
     return success(
         "Knowledge source document uploaded",
         {"result": result},
@@ -156,14 +161,31 @@ async def source_reject(source_id: str, request: RejectInput, principal: Admin):
 @router.get("/knowledge-sources/{source_id}/status")
 async def source_status(source_id: str, _principal: Admin):
     source = json_safe(await get_source(source_id))
+    metadata = source.get("metadata") or {}
     return success(
         "Knowledge source status retrieved",
         {
             "status": {
+                "id": source.get("id") or source_id,
                 "sourceId": source_id,
+                "sourceTitle": source.get("sourceTitle") or source.get("title"),
                 "ingestionStatus": source.get("ingestionStatus"),
-                "processingStage": (source.get("metadata") or {}).get("processingStage"),
-                "metadata": source.get("metadata", {}),
+                "legalReviewed": bool(source.get("legalReviewed")),
+                "active": bool(source.get("active", True)),
+                "extractionMethod": source.get("extractionMethod"),
+                "ocrStatus": source.get("ocrStatus", "not_required"),
+                "ocrPageCount": metadata.get("extractedPageCount"),
+                "ocrWarnings": metadata.get("extractionWarnings", []),
+                "embeddingModel": source.get("embeddingModel"),
+                "pineconeIndex": source.get("pineconeIndex"),
+                "pineconeNamespace": source.get("pineconeNamespace"),
+                "indexSyncStatus": metadata.get("indexSyncStatus"),
+                "mongoChunkCount": metadata.get("mongoChunkCount", metadata.get("chunkCount")),
+                "pineconeVectorCount": metadata.get("pineconeVectorCount"),
+                "lastIndexedAt": metadata.get("lastIndexedAt"),
+                "processingStage": metadata.get("processingStage"),
+                "ingestionError": source.get("ingestionError"),
+                "metadata": metadata,
             }
         },
     )

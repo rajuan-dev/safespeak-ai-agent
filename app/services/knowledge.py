@@ -3,6 +3,7 @@ import hashlib
 import mimetypes
 import re
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,7 @@ from app.models.extraction import ExtractedDocument
 from app.models.knowledge import KnowledgeSourceCreate, KnowledgeSourceUpdate
 from app.services.chunking import chunk_extracted_document, chunk_plain_text
 from app.services.embeddings import embedding_service
-from app.services.extraction import extract_pdf, ocr_health
+from app.services.extraction import extract_document, ocr_health
 from app.services.legal_metadata import build_structure_tree
 from app.services.legal_readiness import golden_report_health
 from app.services.serialization import json_safe
@@ -26,6 +27,73 @@ SOURCE_COLLECTION = "ragknowledgesources"
 CHUNK_COLLECTION = "ragchunks"
 EXTRACTION_COLLECTION = "ragextracteddocuments"
 STRUCTURE_COLLECTION = "ragsourcestructures"
+OFFICIAL_SOURCE_HOSTS = {
+    "legislation.gov.au",
+    "austlii.edu.au",
+    "humanrights.gov.au",
+    "ahrc.gov.au",
+    "aihw.gov.au",
+    "esafety.gov.au",
+    "oaic.gov.au",
+    "accc.gov.au",
+    "scamwatch.gov.au",
+    "cyber.gov.au",
+    "acma.gov.au",
+    "asic.gov.au",
+    "fairwork.gov.au",
+    "fwc.gov.au",
+    "homeaffairs.gov.au",
+    "education.gov.au",
+    "nsw.gov.au",
+    "agd.nsw.gov.au",
+    "police.nsw.gov.au",
+    "legislation.nsw.gov.au",
+    "vic.gov.au",
+    "legislation.vic.gov.au",
+    "veohrc.vic.gov.au",
+    "vcat.vic.gov.au",
+    "qld.gov.au",
+    "legislation.qld.gov.au",
+    "adcq.qld.gov.au",
+    "courts.qld.gov.au",
+    "sa.gov.au",
+    "legislation.sa.gov.au",
+    "equalopportunity.sa.gov.au",
+    "wa.gov.au",
+    "legislation.wa.gov.au",
+    "equalopportunity.wa.gov.au",
+    "tas.gov.au",
+    "legislation.tas.gov.au",
+    "equalopportunity.tas.gov.au",
+    "nt.gov.au",
+    "legislation.nt.gov.au",
+    "act.gov.au",
+    "legislation.act.gov.au",
+    "1800respect.org.au",
+    "familyviolencelaw.gov.au",
+    "legalaid.nsw.gov.au",
+    "legalaid.vic.gov.au",
+    "legalaid.qld.gov.au",
+    "lsc.sa.gov.au",
+    "legalaid.wa.gov.au",
+    "legalaid.tas.gov.au",
+}
+GOVERNED_SOURCE_CATEGORIES = {"official_legal_source", "official_support_source"}
+VALID_SOURCE_TYPES = {
+    "Act",
+    "Regulation",
+    "Guideline",
+    "Form",
+    "Decision",
+    "Report",
+    "Policy",
+    "ProductRequirement",
+    "SupportResource",
+    "FAQ",
+    "WebPage",
+}
+DISALLOWED_OFFICIAL_SOURCE_TYPES = {"Policy", "ProductRequirement"}
+SUPPORTED_DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".html", ".htm", ".csv", ".json"}
 
 
 def _object_id(value: str) -> ObjectId:
@@ -60,6 +128,90 @@ def _source_fields(source: dict[str, Any]) -> dict[str, Any]:
         "sourceType",
     )
     return {name: source.get(name) for name in names if source.get(name) is not None}
+
+
+def _normalize_hostname(value: str) -> str:
+    return value.strip().lower().rstrip(".")
+
+
+def _is_official_source_url(url: str | None) -> bool:
+    if not url:
+        return False
+    try:
+        hostname = _normalize_hostname(urlparse(url).hostname or "")
+    except ValueError:
+        return False
+    return any(
+        hostname == official_host or hostname.endswith(f".{official_host}")
+        for official_host in OFFICIAL_SOURCE_HOSTS
+    )
+
+
+def _is_governed_source(source_category: str | None) -> bool:
+    return bool(source_category and source_category in GOVERNED_SOURCE_CATEGORIES)
+
+
+def _assert_governance(data: dict[str, Any]) -> None:
+    if not _is_governed_source(data.get("sourceCategory")):
+        return
+
+    official_url = data.get("officialUrl") or data.get("url")
+    source_type = data.get("sourceType")
+    source_authority = data.get("sourceAuthority") or data.get("authority")
+
+    if not _is_official_source_url(official_url):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Official legal/support knowledge sources must use an approved government, agency, or AustLII URL",
+        )
+
+    if source_type in DISALLOWED_OFFICIAL_SOURCE_TYPES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Official legal/support knowledge sources must be statutes, regulations, guidance, forms, decisions, reports, FAQs, support resources, or webpages",
+        )
+
+    if not str(data.get("publisher") or "").strip():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Official legal/support knowledge sources require a publisher",
+        )
+
+    if not str(data.get("licenseStatus") or "").strip():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Official legal/support knowledge sources require a license status",
+        )
+
+    if not data.get("lastUpdated"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Official legal/support knowledge sources require lastUpdated metadata",
+        )
+
+    if not data.get("sourceDate"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Official legal/support knowledge sources require a sourceDate for versioned provenance",
+        )
+
+    if not data.get("nextRefreshAt"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Official legal/support knowledge sources require a nextRefreshAt refresh date",
+        )
+
+    if not str(source_authority or "").strip():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Official legal/support knowledge sources require a source authority or agency name",
+        )
+
+    if not str(data.get("refreshCadence") or "").strip():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Official legal/support knowledge sources require a refreshCadence",
+        )
 
 
 async def ensure_indexes() -> None:
@@ -170,11 +322,25 @@ async def _resolve_cross_references(
         await collection.bulk_write(operations)
 
 
+def _serialize_source(source: dict[str, Any]) -> dict[str, Any]:
+    serialized = json_safe(source)
+    metadata = serialized.get("metadata") or {}
+    raw_text = source.get("rawText") or ""
+    serialized["rawTextPreview"] = raw_text[:4000] if raw_text else None
+    serialized["rawTextLength"] = len(raw_text) if raw_text else 0
+    serialized["hasStoredContent"] = bool(
+        raw_text
+        or serialized.get("localFilePath")
+        or ((metadata.get("uploadedFile") or {}).get("storageKey"))
+    )
+    return serialized
+
+
 async def list_sources() -> list[dict[str, Any]]:
     cursor = get_database()[SOURCE_COLLECTION].find({"deletedAt": {"$exists": False}}).sort(
         "updatedAt", -1
     )
-    return json_safe(await cursor.to_list(length=1000))
+    return [_serialize_source(source) for source in await cursor.to_list(length=1000)]
 
 
 async def get_source(source_id: str) -> dict[str, Any]:
@@ -192,6 +358,13 @@ async def create_source(data: KnowledgeSourceCreate, actor_id: str | None) -> di
     for field in ("officialUrl", "url"):
         if field in document:
             document[field] = str(document[field])
+    if document.get("sourceType") and document["sourceType"] not in VALID_SOURCE_TYPES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid sourceType")
+    if not document.get("authority") and document.get("sourceAuthority"):
+        document["authority"] = document["sourceAuthority"]
+    if not document.get("sourceAuthority") and document.get("authority"):
+        document["sourceAuthority"] = document["authority"]
+    _assert_governance(document)
     document.update(
         {
             "createdAt": now,
@@ -202,7 +375,7 @@ async def create_source(data: KnowledgeSourceCreate, actor_id: str | None) -> di
         }
     )
     result = await get_database()[SOURCE_COLLECTION].insert_one(document)
-    return json_safe({**document, "_id": result.inserted_id})
+    return _serialize_source({**document, "_id": result.inserted_id})
 
 
 async def update_source(source_id: str, data: KnowledgeSourceUpdate) -> dict[str, Any]:
@@ -211,7 +384,18 @@ async def update_source(source_id: str, data: KnowledgeSourceUpdate) -> dict[str
         if field in changes:
             changes[field] = str(changes[field])
     if not changes:
-        return json_safe(await get_source(source_id))
+        return _serialize_source(await get_source(source_id))
+    if changes.get("sourceType") and changes["sourceType"] not in VALID_SOURCE_TYPES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid sourceType")
+    current = await get_source(source_id)
+    merged = {**current, **changes}
+    if not merged.get("authority") and merged.get("sourceAuthority"):
+        merged["authority"] = merged["sourceAuthority"]
+        changes.setdefault("authority", merged["authority"])
+    if not merged.get("sourceAuthority") and merged.get("authority"):
+        merged["sourceAuthority"] = merged["authority"]
+        changes.setdefault("sourceAuthority", merged["sourceAuthority"])
+    _assert_governance(merged)
     changes["updatedAt"] = _now()
     document = await get_database()[SOURCE_COLLECTION].find_one_and_update(
         {"_id": _object_id(source_id), "deletedAt": {"$exists": False}},
@@ -220,7 +404,7 @@ async def update_source(source_id: str, data: KnowledgeSourceUpdate) -> dict[str
     )
     if not document:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Knowledge source not found")
-    return json_safe(document)
+    return _serialize_source(document)
 
 
 async def delete_source(source_id: str) -> None:
@@ -401,8 +585,9 @@ async def ingest_extraction(
         {"_id": source["_id"]},
         {"$set": metadata_updates},
     )
+    refreshed = await get_source(source_id)
     return {
-        "source": json_safe(await get_source(source_id)),
+        "source": _serialize_source(refreshed),
         "chunkCount": len(documents),
         "sha256Hash": extracted.sha256,
         "extractedLegalMetadata": {
@@ -410,7 +595,8 @@ async def ingest_extraction(
             "tableCount": len(extracted.tables),
             "extractionMethod": extracted.extractionMethod,
         },
-        "ingestionStatus": "embedded",
+        "ingestionStatus": refreshed.get("ingestionStatus", "embedded"),
+        "uploadedFile": uploaded_file,
     }
 
 
@@ -438,26 +624,33 @@ async def ingest_text(
             }
         },
     )
+    refreshed = await get_source(source_id)
     return {
-        "source": json_safe(await get_source(source_id)),
+        "source": _serialize_source(refreshed),
         "chunkCount": len(documents),
         "sha256Hash": sha256,
-        "ingestionStatus": "embedded",
+        "ingestionStatus": refreshed.get("ingestionStatus", "embedded"),
     }
 
 
-async def upload_and_ingest(source_id: str, upload: UploadFile) -> dict[str, Any]:
+async def upload_and_ingest(
+    source_id: str,
+    upload: UploadFile,
+    *,
+    ingest_immediately: bool = True,
+) -> dict[str, Any]:
     data = await upload.read()
     if len(data) > get_settings().MAX_UPLOAD_BYTES:
         raise HTTPException(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             "Document exceeds upload limit",
         )
-    file_name = upload.filename or "document.pdf"
-    if not data.startswith(b"%PDF"):
+    file_name = upload.filename or "document"
+    extension = Path(file_name).suffix.lower()
+    if extension not in SUPPORTED_DOCUMENT_EXTENSIONS:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "The AI agent currently accepts PDF documents for structured extraction",
+            "Supported document types are PDF, DOCX, TXT, MD, HTML, CSV, and JSON",
         )
     safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(file_name).name)
     storage_key = f"{source_id}/{hashlib.sha256(data).hexdigest()[:16]}-{safe_name}"
@@ -471,7 +664,30 @@ async def upload_and_ingest(source_id: str, upload: UploadFile) -> dict[str, Any
         "storageKey": storage_key,
         "uploadedAt": _now().isoformat(),
     }
-    extracted = await asyncio.to_thread(extract_pdf, data, file_name)
+    if not ingest_immediately:
+        source = await get_source(source_id)
+        await get_database()[SOURCE_COLLECTION].update_one(
+            {"_id": source["_id"]},
+            {
+                "$set": {
+                    "localFilePath": str(path),
+                    "updatedAt": _now(),
+                    "metadata.uploadedFile": uploaded_file,
+                    "metadata.extractionStatus": "pending_upload_ingest",
+                    "metadata.processingStage": "not_indexed",
+                    "metadata.searchReadinessStatus": "not_indexed",
+                }
+            },
+        )
+        refreshed = await get_source(source_id)
+        return {
+            "source": _serialize_source(refreshed),
+            "uploadedFile": uploaded_file,
+            "ingestionStatus": refreshed.get("ingestionStatus", "metadata_only"),
+            "message": "Document uploaded. Run ingest or approval flow when ready.",
+        }
+
+    extracted = await asyncio.to_thread(extract_document, data, file_name, upload.content_type)
     return await ingest_extraction(source_id, extracted, uploaded_file=uploaded_file)
 
 
@@ -484,6 +700,23 @@ async def reindex_source(source_id: str) -> dict[str, Any]:
     raw_text = source.get("rawText")
     if raw_text:
         return await ingest_text(source_id, raw_text, source.get("sha256Hash"))
+    local_file_path = source.get("localFilePath")
+    if local_file_path:
+        path = Path(local_file_path)
+        if not path.exists():
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Uploaded document file is missing from storage",
+            )
+        data = await asyncio.to_thread(path.read_bytes)
+        extracted = await asyncio.to_thread(
+            extract_document,
+            data,
+            path.name,
+            mimetypes.guess_type(path.name)[0],
+        )
+        uploaded_file = ((source.get("metadata") or {}).get("uploadedFile") or None)
+        return await ingest_extraction(source_id, extracted, uploaded_file=uploaded_file)
     raise HTTPException(status.HTTP_409_CONFLICT, "Source has no stored content to reindex")
 
 
@@ -558,6 +791,12 @@ async def set_approval(source_id: str, actor_id: str, approved: bool, reason: st
                 status.HTTP_409_CONFLICT,
                 "Knowledge source refresh is expired",
             )
+        next_review = current.get("nextReviewAt")
+        if next_review and _as_utc(next_review) <= _now():
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Knowledge source review date has expired",
+            )
         if current.get("ingestionStatus") != "embedded":
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
@@ -586,23 +825,35 @@ async def set_approval(source_id: str, actor_id: str, approved: bool, reason: st
     )
     if not document:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Knowledge source not found")
-    return json_safe(document)
+    return _serialize_source(document)
 
 
 async def readiness() -> dict[str, Any]:
     database = get_database()
     sources = database[SOURCE_COLLECTION]
-    total = await sources.count_documents(
-        {"sourceCategory": {"$in": ["official_legal_source", "official_support_source"]}}
-    )
+    governed_filter = {"sourceCategory": {"$in": ["official_legal_source", "official_support_source"]}}
+    total = await sources.count_documents(governed_filter)
     eligible = await sources.count_documents(
         {
-            "sourceCategory": {"$in": ["official_legal_source", "official_support_source"]},
+            **governed_filter,
             "status": "approved",
-            "legalReviewed": True,
             "active": True,
-            "ingestionStatus": {"$in": ["embedded", "partial_index_failed"]},
+            "ingestionStatus": "embedded",
         }
+    )
+    legal_reviewed = await sources.count_documents(
+        {
+            **governed_filter,
+            "$or": [
+                {"sourceCategory": "official_support_source"},
+                {"sourceCategory": "official_legal_source", "legalReviewed": True},
+            ],
+        }
+    )
+    pending_review = await sources.count_documents({**governed_filter, "status": {"$ne": "approved"}})
+    metadata_only = await sources.count_documents({**governed_filter, "ingestionStatus": "metadata_only"})
+    failed_ingestion = await sources.count_documents(
+        {**governed_filter, "ingestionStatus": {"$in": ["failed", "partial_index_failed"]}}
     )
     health = await pinecone_store.health()
     ocr = ocr_health()
@@ -626,13 +877,11 @@ async def readiness() -> dict[str, Any]:
             "eligibleCitationSources": eligible,
             "eligibleLegalSources": eligible,
             "approvedCurrentSources": eligible,
-            "legalReviewedSources": eligible,
-            "pendingReviewSources": max(0, total - eligible),
+            "legalReviewedSources": legal_reviewed,
+            "pendingReviewSources": pending_review,
             "expiredRefreshSources": 0,
-            "metadataOnlySources": await sources.count_documents(
-                {"ingestionStatus": "metadata_only"}
-            ),
-            "failedIngestionSources": await sources.count_documents({"ingestionStatus": "failed"}),
+            "metadataOnlySources": metadata_only,
+            "failedIngestionSources": failed_ingestion,
             "blockedSources": max(0, total - eligible),
         },
         "configuration": {
