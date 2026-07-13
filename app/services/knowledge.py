@@ -155,15 +155,8 @@ def _assert_governance(data: dict[str, Any]) -> None:
     if not _is_governed_source(data.get("sourceCategory")):
         return
 
-    official_url = data.get("officialUrl") or data.get("url")
     source_type = data.get("sourceType")
     source_authority = data.get("sourceAuthority") or data.get("authority")
-
-    if not _is_official_source_url(official_url):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Official legal/support knowledge sources must use an approved government, agency, or AustLII URL",
-        )
 
     if source_type in DISALLOWED_OFFICIAL_SOURCE_TYPES:
         raise HTTPException(
@@ -364,7 +357,6 @@ async def create_source(data: KnowledgeSourceCreate, actor_id: str | None) -> di
         document["authority"] = document["sourceAuthority"]
     if not document.get("sourceAuthority") and document.get("authority"):
         document["sourceAuthority"] = document["authority"]
-    _assert_governance(document)
     document.update(
         {
             "createdAt": now,
@@ -395,7 +387,6 @@ async def update_source(source_id: str, data: KnowledgeSourceUpdate) -> dict[str
     if not merged.get("sourceAuthority") and merged.get("authority"):
         merged["sourceAuthority"] = merged["authority"]
         changes.setdefault("sourceAuthority", merged["sourceAuthority"])
-    _assert_governance(merged)
     changes["updatedAt"] = _now()
     document = await get_database()[SOURCE_COLLECTION].find_one_and_update(
         {"_id": _object_id(source_id), "deletedAt": {"$exists": False}},
@@ -777,6 +768,7 @@ async def set_approval(source_id: str, actor_id: str, approved: bool, reason: st
     actor = ObjectId(actor_id) if ObjectId.is_valid(actor_id) else None
     if approved:
         current = await get_source(source_id)
+        _assert_governance(current)
         if (
             current.get("sourceCategory") == "official_legal_source"
             and not current.get("legalReviewed")

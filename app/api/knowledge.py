@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 
+from app.core.config import get_settings
 from app.core.responses import success
 from app.core.security import Principal, require_content_admin
 from app.models.knowledge import (
@@ -162,6 +163,47 @@ async def source_reject(source_id: str, request: RejectInput, principal: Admin):
 async def source_status(source_id: str, _principal: Admin):
     source = json_safe(await get_source(source_id))
     metadata = source.get("metadata") or {}
+    uploaded_file = metadata.get("uploadedFile") or {}
+    uploaded_file_name = str(uploaded_file.get("originalFileName") or "")
+    uploaded_file_size = uploaded_file.get("fileSizeBytes")
+    storage_key = str(uploaded_file.get("storageKey") or "")
+    local_file_path = str(source.get("localFilePath") or "")
+    candidate_path = (
+        Path(local_file_path)
+        if local_file_path
+        else get_settings().KNOWLEDGE_STORAGE_PATH / storage_key
+        if storage_key
+        else None
+    )
+    uploaded_file_exists = bool(candidate_path and candidate_path.exists())
+    raw_text = str(source.get("rawText") or "")
+    integrity_warnings: list[str] = []
+    likely_sample_document = False
+
+    if uploaded_file_name.lower().endswith(".pdf") and source.get("extractionMethod") == "manual":
+        integrity_warnings.append(
+            "This PDF source is marked as manual extraction, not full PDF parsing."
+        )
+    if isinstance(uploaded_file_size, int) and uploaded_file_name.lower().endswith(".pdf"):
+        if uploaded_file_size < 10_000:
+            likely_sample_document = True
+            integrity_warnings.append(
+                "This uploaded PDF is very small and looks like a smoke-test or sample file, not a full document."
+            )
+    if uploaded_file_name and not uploaded_file_exists:
+        integrity_warnings.append(
+            "The stored uploaded file is missing from knowledge storage, so re-extraction from the original file is not currently possible."
+        )
+    if (
+        uploaded_file_name.lower().endswith(".pdf")
+        and isinstance(uploaded_file_size, int)
+        and uploaded_file_size > 100_000
+        and len(raw_text) < 1000
+    ):
+        integrity_warnings.append(
+            "The extracted text is unusually short for the uploaded PDF size. Review extraction completeness."
+        )
+
     return success(
         "Knowledge source status retrieved",
         {
@@ -185,6 +227,11 @@ async def source_status(source_id: str, _principal: Admin):
                 "lastIndexedAt": metadata.get("lastIndexedAt"),
                 "processingStage": metadata.get("processingStage"),
                 "ingestionError": source.get("ingestionError"),
+                "uploadedFileExists": uploaded_file_exists,
+                "uploadedFileSizeBytes": uploaded_file_size,
+                "rawTextLength": len(raw_text),
+                "likelySampleDocument": likely_sample_document,
+                "integrityWarnings": integrity_warnings,
                 "metadata": metadata,
             }
         },
