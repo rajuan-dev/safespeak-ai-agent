@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, TypedDict
 
 from fastapi import HTTPException
@@ -17,6 +18,7 @@ from app.services.backend_ai import (
 from app.services.legal_readiness import assert_legal_runtime_ready
 from app.services.llm import llm_service
 from app.services.retrieval import hybrid_search
+from app.services.source_templates import build_template_prompt_block, resolve_source_templates
 
 TIMELINE_KEYS = {
     "who",
@@ -50,15 +52,36 @@ async def retrieve_support(state: AssistantState) -> AssistantState:
     turn_policy = build_turn_policy(classification["intent"], request.message, response_mode)
     if not turn_policy["ragRequired"]:
         return {"results": [], "rag_unavailable": False}
-    search = SearchInput(
-        query=request.message,
-        topK=request.topK,
-        jurisdiction=request.jurisdiction,
-        sourceCategory="official_legal_source",
-    )
     try:
         assert_legal_runtime_ready()
-        return {"results": await hybrid_search(search), "rag_unavailable": False}
+        legal_search = SearchInput(
+            query=request.message,
+            topK=request.topK,
+            jurisdiction=request.jurisdiction,
+            sourceCategory="official_legal_source",
+        )
+        support_search = SearchInput(
+            query=request.message,
+            topK=request.topK,
+            jurisdiction=request.jurisdiction,
+            sourceCategory="official_support_source",
+        )
+        legal_results, support_results = await asyncio.gather(
+            hybrid_search(legal_search),
+            hybrid_search(support_search),
+        )
+        combined: list[dict[str, Any]] = []
+        seen_chunk_ids: set[str] = set()
+        for item in [*legal_results, *support_results]:
+            chunk_id = str(item.get("chunkId") or "")
+            if chunk_id and chunk_id in seen_chunk_ids:
+                continue
+            if chunk_id:
+                seen_chunk_ids.add(chunk_id)
+            combined.append(item)
+            if len(combined) >= request.topK:
+                break
+        return {"results": combined, "rag_unavailable": False}
     except HTTPException:
         return {"results": [], "rag_unavailable": True}
 
@@ -145,6 +168,8 @@ async def build_turn(state: AssistantState) -> AssistantState:
     response_plan = build_response_plan(intent, request.message, turn_policy)
     context = "\n\n".join(item["text"] for item in results)
     citations = [_citation_from_result(item) for item in results]
+    resolved_templates = resolve_source_templates(results)
+    template_prompt_block = build_template_prompt_block(resolved_templates)
     rag_status = (
         "retrieved"
         if citations
@@ -170,7 +195,8 @@ async def build_turn(state: AssistantState) -> AssistantState:
             "advice. Ask at most one user-facing question unless emergency safety requires "
             "otherwise. Do not pressure the user for identifying details. Preserve existing "
             "timeline values. If legal or pathway context is supplied, use only that context "
-            "and do not invent citations. Return valid JSON with keys: assistantMessage, "
+            "and do not invent citations. If source-specific response templates are provided, "
+            "treat them as style guidance only and never as facts. Return valid JSON with keys: assistantMessage, "
             "nextQuestion, timeline, readyForSubmission, confidence, citations, reviewStatus."
         ),
         user=(
@@ -185,6 +211,7 @@ async def build_turn(state: AssistantState) -> AssistantState:
             f"Language: {request.language or 'en'}\n"
             f"Jurisdiction: {request.jurisdiction or 'unknown'}\n"
             f"RAG status: {rag_status}\n"
+            f"Source template guidance: {template_prompt_block}\n"
             f"Optional approved context: {context or 'No approved RAG context was retrieved.'}"
         ),
         fallback={
@@ -264,7 +291,7 @@ async def build_turn(state: AssistantState) -> AssistantState:
             "timeline": timeline,
             "readyForSubmission": bool(generated.get("readyForSubmission", False)),
             "confidence": _confidence(generated.get("confidence")),
-            "disclaimer": INFORMATION_ONLY_DISCLAIMER,
+            "disclaimer": resolved_templates.get("disclaimer") or INFORMATION_ONLY_DISCLAIMER,
             "citations": citations,
             "showSources": bool(citations and turn_policy["sourcesVisible"]),
             "sourceDisplayReason": source_display_reason,
@@ -288,6 +315,9 @@ async def build_turn(state: AssistantState) -> AssistantState:
             "model": get_settings().OPENAI_MODEL,
             "jurisdiction": "AU",
             "ragStatus": rag_status,
+            "sourceTemplatesApplied": bool(resolved_templates.get("used")),
+            "sourceTemplateSourceId": resolved_templates.get("selectedSourceId"),
+            "sourceTemplateSourceTitle": resolved_templates.get("selectedSourceTitle"),
             "responsePlan": response_plan,
             "turnPolicyDecision": turn_policy,
             "responseStrategy": turn_policy["responseStrategy"],

@@ -7,10 +7,10 @@ from app.models.common import AnswerInput, SearchInput
 from app.services.citation_verifier import verify_grounded_answer
 from app.services.llm import llm_service
 from app.services.retrieval import hybrid_search
-
-DISCLAIMER = (
-    "This is general legal information from the cited sources, not legal advice. "
-    "Check the current official legislation and seek qualified advice for your situation."
+from app.services.source_templates import (
+    DEFAULT_RAG_DISCLAIMER,
+    build_template_prompt_block,
+    resolve_source_templates,
 )
 
 
@@ -56,11 +56,12 @@ async def retrieve(state: RagState) -> RagState:
 async def generate(state: RagState) -> RagState:
     request = state["request"]
     results = state.get("results", [])
+    resolved_templates = resolve_source_templates(results)
     if not results:
         return {
             "output": {
                 "answer": "The information was not found in the available approved legal data.",
-                "disclaimer": DISCLAIMER,
+                "disclaimer": DEFAULT_RAG_DISCLAIMER,
                 "citations": [],
                 "sourceCategoriesUsed": [],
                 "confidence": "low",
@@ -84,6 +85,7 @@ async def generate(state: RagState) -> RagState:
         )
         for index, item in enumerate(results, start=1)
     )
+    template_prompt_block = build_template_prompt_block(resolved_templates)
     generated = await llm_service.json_completion(
         system=(
             "You are SafeSpeak's Australian legal information assistant. Answer only from the "
@@ -92,9 +94,15 @@ async def generate(state: RagState) -> RagState:
             "contain the answer, say exactly that it was not found in the available legal data. "
             "Return JSON with keys answer and confidence. Use plain language but do not alter the "
             "legal meaning. Every factual or legal sentence must end with one or more markers such "
-            "as [SOURCE 1]. Do not cite a source that does not directly support that sentence."
+            "as [SOURCE 1]. Do not cite a source that does not directly support that sentence. "
+            "If source-specific response templates are provided, treat them as wording guidance "
+            "only and never as evidence."
         ),
-        user=f"Question:\n{request.question}\n\nApproved legal sources:\n{context}",
+        user=(
+            f"Question:\n{request.question}\n\n"
+            f"Source template guidance:\n{template_prompt_block}\n\n"
+            f"Approved legal sources:\n{context}"
+        ),
         fallback={
             "answer": "The information was not found in the available approved legal data.",
             "confidence": "low",
@@ -105,7 +113,7 @@ async def generate(state: RagState) -> RagState:
         return {
             "output": {
                 "answer": "The information was not found in the available approved legal data.",
-                "disclaimer": DISCLAIMER,
+                "disclaimer": DEFAULT_RAG_DISCLAIMER,
                 "citations": [],
                 "sourceCategoriesUsed": [],
                 "confidence": "low",
@@ -118,7 +126,7 @@ async def generate(state: RagState) -> RagState:
         return {
             "output": {
                 "answer": "The information was not found in the available approved legal data.",
-                "disclaimer": DISCLAIMER,
+                "disclaimer": DEFAULT_RAG_DISCLAIMER,
                 "citations": [],
                 "sourceCategoriesUsed": [],
                 "confidence": "low",
@@ -134,13 +142,16 @@ async def generate(state: RagState) -> RagState:
     return {
         "output": {
             "answer": answer,
-            "disclaimer": DISCLAIMER,
+            "disclaimer": resolved_templates.get("disclaimerPhrasing") or DEFAULT_RAG_DISCLAIMER,
             "citations": [_citation(result) for result in results],
             "sourceCategoriesUsed": sorted(
                 {str(result.get("sourceCategory")) for result in results}
             ),
             "confidence": generated.get("confidence", "medium"),
             "pendingHumanReview": False,
+            "sourceTemplatesApplied": bool(resolved_templates.get("used")),
+            "sourceTemplateSourceId": resolved_templates.get("selectedSourceId"),
+            "sourceTemplateSourceTitle": resolved_templates.get("selectedSourceTitle"),
             "safetyFlags": {
                 "insufficientSources": False,
                 "citationGate": "passed",

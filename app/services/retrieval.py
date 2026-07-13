@@ -58,6 +58,7 @@ def _chunk_to_result(
     score: float | None = None,
 ) -> dict[str, Any]:
     metadata = chunk.get("metadata") or {}
+    source_metadata = source.get("metadata") or {}
     return {
         "chunkId": str(chunk["_id"]),
         "sourceId": str(chunk["sourceId"]),
@@ -93,6 +94,8 @@ def _chunk_to_result(
         "pageNumber": chunk.get("pageNumber") or metadata.get("pageStart"),
         "extractionMethod": chunk.get("extractionMethod"),
         "metadata": json_safe(metadata),
+        "sourceTemplates": json_safe(source_metadata.get("templates") or {}),
+        "customTopic": source_metadata.get("customTopic"),
     }
 
 
