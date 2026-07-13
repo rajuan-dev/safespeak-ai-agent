@@ -58,7 +58,8 @@ SOURCE_GROUNDED_TOPIC_RE = re.compile(
     r"\b(?:acts?|regulations?|laws?|legal|rights|sections?|citations?|cite|sources?|"
     r"reports?|reporting|complaints?|complain|agenc(?:y|ies)|ombudsman|commission|"
     r"tribunal|court|police|privacy|anti-discrimination|discrimination|fair work|"
-    r"esafety|oaic|ahrc|scamwatch|legal aid|legislation)\b",
+    r"esafety|oaic|ahrc|scamwatch|legal aid|legislation|guidance|guideline|"
+    r"document|uploaded document|uploaded source|policy document)\b",
     re.IGNORECASE,
 )
 HIGH_IMPACT_LEGAL_RE = re.compile(
@@ -88,7 +89,7 @@ LEGAL_ASSISTANCE_SERVICES_RE = re.compile(
 )
 FACTUAL_SOURCE_RE = re.compile(
     r"\b(?:according to|aihw|uploaded\s+(?:document|report|source)|(?:this|the)\s+"
-    r"(?:document|report|source|act|legislation)|cite|citation|page\s+number|"
+    r"(?:document|report|source|guidance|guideline|act|legislation)|cite|citation|page\s+number|"
     r"section\s+[0-9a-z])\b",
     re.IGNORECASE,
 )

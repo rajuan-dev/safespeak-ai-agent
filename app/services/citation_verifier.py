@@ -11,7 +11,9 @@ SECTION_RE = re.compile(
 )
 NUMBER_RE = re.compile(r"\b(?:\$\s*)?\d+(?:[,.]\d+)*(?:\s*(?:days?|years?|units?|%))?\b", re.I)
 WORD_RE = re.compile(r"[A-Za-z0-9]{3,}")
-NOT_FOUND_RE = re.compile(r"\bnot found in the available (?:approved )?legal data\b", re.I)
+NOT_FOUND_RE = re.compile(
+    r"\bnot found in the available (?:approved )?(?:legal|support|source) data\b", re.I
+)
 STOPWORDS = {
     "also",
     "and",
@@ -69,15 +71,16 @@ def _sentences(answer: str) -> list[str]:
 
 def _has_complete_provenance(source: dict[str, Any]) -> bool:
     metadata = source.get("metadata") or {}
-    return all(
-        (
-            source.get("title"),
-            source.get("sectionRef"),
-            source.get("pageNumber") or metadata.get("pageStart"),
-            source.get("versionDate") or metadata.get("versionDate"),
-            source.get("citationUrl"),
-        )
+    source_category = str(source.get("sourceCategory") or "")
+    base_fields = (
+        source.get("title"),
+        source.get("pageNumber") or metadata.get("pageStart"),
+        source.get("versionDate") or metadata.get("versionDate"),
+        source.get("citationUrl"),
     )
+    if source_category == "official_support_source":
+        return all(base_fields)
+    return all((source.get("sectionRef"), *base_fields))
 
 
 def verify_grounded_answer(answer: str, sources: list[dict[str, Any]]) -> VerificationResult:
@@ -117,17 +120,19 @@ def verify_grounded_answer(answer: str, sources: list[dict[str, Any]]) -> Verifi
         source_sections = {
             str(source.get("sectionRef") or "").casefold() for source in cited_sources
         }
-        unsupported_sections = [
-            section
-            for section in SECTION_RE.findall(claim)
-            if section.casefold() not in source_sections
-            and not any(
-                value.startswith(section.split("(")[0].casefold()) for value in source_sections
-            )
-        ]
-        if unsupported_sections:
-            result.errors.append(f"sentence_{sentence_index}:unsupported_section")
-            continue
+        if source_sections:
+            unsupported_sections = [
+                section
+                for section in SECTION_RE.findall(claim)
+                if section.casefold() not in source_sections
+                and not any(
+                    value.startswith(section.split("(")[0].casefold())
+                    for value in source_sections
+                )
+            ]
+            if unsupported_sections:
+                result.errors.append(f"sentence_{sentence_index}:unsupported_section")
+                continue
 
         source_compact = re.sub(r"[\s,$]", "", source_text.casefold())
         numeric_claim = SECTION_RE.sub("", claim)
