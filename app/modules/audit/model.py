@@ -1,0 +1,2 @@
+AUDIT_RESOURCE_TYPE = "system"
+

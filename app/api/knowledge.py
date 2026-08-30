@@ -184,12 +184,15 @@ async def source_status(source_id: str, _principal: Admin):
         integrity_warnings.append(
             "This PDF source is marked as manual extraction, not full PDF parsing."
         )
-    if isinstance(uploaded_file_size, int) and uploaded_file_name.lower().endswith(".pdf"):
-        if uploaded_file_size < 10_000:
-            likely_sample_document = True
-            integrity_warnings.append(
-                "This uploaded PDF is very small and looks like a smoke-test or sample file, not a full document."
-            )
+    if (
+        isinstance(uploaded_file_size, int)
+        and uploaded_file_name.lower().endswith(".pdf")
+        and uploaded_file_size < 10_000
+    ):
+        likely_sample_document = True
+        integrity_warnings.append(
+            "This uploaded PDF is very small and looks like a smoke-test or sample file, not a full document."
+        )
     if uploaded_file_name and not uploaded_file_exists:
         integrity_warnings.append(
             "The stored uploaded file is missing from knowledge storage, so re-extraction from the original file is not currently possible."

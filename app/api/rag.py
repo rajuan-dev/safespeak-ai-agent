@@ -2,13 +2,21 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.agents.assistant_graph import run_timeline_assistant
-from app.agents.rag_graph import answer_question
 from app.core.responses import success
 from app.core.security import Principal, require_ai_consent
-from app.models.common import AnswerInput, SearchInput, TimelineAssistantInput
-from app.services.legal_readiness import assert_legal_runtime_ready
-from app.services.retrieval import hybrid_search
+from app.modules.auth.dependencies import require_admin_role
+from app.modules.rag.schema import (
+    AnswerInput,
+    RagDebugRetrieveInput,
+    SearchInput,
+    TimelineAssistantInput,
+)
+from app.modules.rag.service import (
+    answer_rag,
+    debug_retrieve_rag,
+    search_rag,
+    timeline_assistant_rag,
+)
 
 router = APIRouter(prefix="/rag", tags=["rag"])
 
@@ -18,11 +26,9 @@ async def search(
     request: SearchInput,
     _principal: Annotated[Principal, Depends(require_ai_consent)],
 ):
-    assert_legal_runtime_ready()
-    results = await hybrid_search(request)
     return success(
         "RAG search completed",
-        {"results": results},
+        {"results": await search_rag(request)},
         {"informationOnly": True, "citationsRequired": True},
     )
 
@@ -32,9 +38,7 @@ async def answer(
     request: AnswerInput,
     _principal: Annotated[Principal, Depends(require_ai_consent)],
 ):
-    assert_legal_runtime_ready()
-    result = await answer_question(request)
-    return success("RAG answer generated", result, {"informationOnly": True})
+    return success("RAG answer generated", await answer_rag(request), {"informationOnly": True})
 
 
 @router.post("/timeline-assistant")
@@ -42,9 +46,21 @@ async def timeline_assistant(
     request: TimelineAssistantInput,
     _principal: Annotated[Principal, Depends(require_ai_consent)],
 ):
-    result = await run_timeline_assistant(request)
+    result = await timeline_assistant_rag(request)
     return success(
         "Timeline assistant response generated",
         result,
+        {"informationOnly": True},
+    )
+
+
+@router.post("/debug/retrieve")
+async def debug_retrieve(
+    request: RagDebugRetrieveInput,
+    _principal: Annotated[Principal, Depends(require_admin_role("super_admin", "content_admin"))],
+):
+    return success(
+        "RAG debug retrieval completed",
+        await debug_retrieve_rag(request),
         {"informationOnly": True},
     )

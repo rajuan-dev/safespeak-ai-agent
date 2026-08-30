@@ -42,4 +42,3 @@ class TimelineAssistantInput(StrictModel):
     incidentCategory: str | None = None
     jurisdiction: JURISDICTIONS | None = None
     topK: int = Field(default=4, ge=1, le=8)
-

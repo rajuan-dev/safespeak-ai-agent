@@ -30,6 +30,8 @@ from app.services.ai_tools import (
 )
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+OPTIONAL_FORM_FIELD = Form(default=None)
+REQUIRED_AUDIO_FILE = File(...)
 
 
 @router.post("/extract-incident-fields")
@@ -107,12 +109,12 @@ async def redact(
 @router.post("/transcribe-audio")
 async def transcribe_audio(
     principal: Annotated[Principal, Depends(require_ai_or_transcription_consent)],
-    audio: UploadFile = File(...),
-    reportId: str | None = Form(default=None),
-    evidenceId: str | None = Form(default=None),
-    language: str | None = Form(default=None),
-    saveTranscript: bool | None = Form(default=None),
-    useAsNarrative: bool | None = Form(default=None),
+    audio: UploadFile = REQUIRED_AUDIO_FILE,
+    reportId: str | None = OPTIONAL_FORM_FIELD,
+    evidenceId: str | None = OPTIONAL_FORM_FIELD,
+    language: str | None = OPTIONAL_FORM_FIELD,
+    saveTranscript: bool | None = OPTIONAL_FORM_FIELD,
+    useAsNarrative: bool | None = OPTIONAL_FORM_FIELD,
 ):
     request = TranscribeAudioInput(
         reportId=reportId,

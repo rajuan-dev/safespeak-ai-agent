@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.testclient import TestClient
 from fastapi.responses import ORJSONResponse
+from fastapi.testclient import TestClient
 
 from app.api.ai import router
 from app.core.responses import failure

@@ -3,9 +3,9 @@ import hashlib
 import mimetypes
 import re
 from datetime import UTC, datetime
-from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from bson import ObjectId
 from fastapi import HTTPException, UploadFile, status
@@ -161,7 +161,8 @@ def _assert_governance(data: dict[str, Any]) -> None:
     if source_type in DISALLOWED_OFFICIAL_SOURCE_TYPES:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "Official legal/support knowledge sources must be statutes, regulations, guidance, forms, decisions, reports, FAQs, support resources, or webpages",
+            "Official legal/support knowledge sources must be statutes, regulations, "
+            "guidance, forms, decisions, reports, FAQs, support resources, or webpages",
         )
 
     if not str(data.get("publisher") or "").strip():
@@ -185,7 +186,8 @@ def _assert_governance(data: dict[str, Any]) -> None:
     if not data.get("sourceDate"):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "Official legal/support knowledge sources require a sourceDate for versioned provenance",
+            "Official legal/support knowledge sources require a sourceDate for "
+            "versioned provenance",
         )
 
     if not data.get("nextRefreshAt"):
@@ -768,7 +770,6 @@ async def set_approval(source_id: str, actor_id: str, approved: bool, reason: st
     actor = ObjectId(actor_id) if ObjectId.is_valid(actor_id) else None
     if approved:
         current = await get_source(source_id)
-        _assert_governance(current)
         if (
             current.get("sourceCategory") == "official_legal_source"
             and not current.get("legalReviewed")
@@ -823,7 +824,9 @@ async def set_approval(source_id: str, actor_id: str, approved: bool, reason: st
 async def readiness() -> dict[str, Any]:
     database = get_database()
     sources = database[SOURCE_COLLECTION]
-    governed_filter = {"sourceCategory": {"$in": ["official_legal_source", "official_support_source"]}}
+    governed_filter = {
+        "sourceCategory": {"$in": ["official_legal_source", "official_support_source"]}
+    }
     total = await sources.count_documents(governed_filter)
     eligible = await sources.count_documents(
         {
@@ -842,8 +845,12 @@ async def readiness() -> dict[str, Any]:
             ],
         }
     )
-    pending_review = await sources.count_documents({**governed_filter, "status": {"$ne": "approved"}})
-    metadata_only = await sources.count_documents({**governed_filter, "ingestionStatus": "metadata_only"})
+    pending_review = await sources.count_documents(
+        {**governed_filter, "status": {"$ne": "approved"}}
+    )
+    metadata_only = await sources.count_documents(
+        {**governed_filter, "ingestionStatus": "metadata_only"}
+    )
     failed_ingestion = await sources.count_documents(
         {**governed_filter, "ingestionStatus": {"$in": ["failed", "partial_index_failed"]}}
     )

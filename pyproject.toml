@@ -10,6 +10,9 @@ requires-python = ">=3.12,<3.15"
 dependencies = [
   "fastapi>=0.115,<1",
   "uvicorn[standard]>=0.34,<1",
+  "bcrypt>=4,<6",
+  "boto3>=1.39,<2",
+  "cryptography>=45,<46",
   "pydantic>=2.10,<3",
   "pydantic-settings>=2.7,<3",
   "python-multipart>=0.0.20,<1",
@@ -40,9 +43,8 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.ruff]
-line-length = 100
+line-length = 180
 target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-

@@ -1,32 +1,25 @@
-# SafeSpeak AI Agent
+# SafeSpeak FastAPI Backend
 
-Separate FastAPI service for SafeSpeak legal RAG, PDF extraction, knowledge-source
-administration, and LangGraph AI workflows.
+SafeSpeak now runs as a unified FastAPI backend. This service owns the application
+API surface for sessions, authentication, users, profiles, consent, privacy,
+reports, evidence, conversation flow, AI orchestration, RAG, ScamShield, support,
+admin, analytics, content, resources, platform settings, and audit logging.
+
+The legacy Node.js backend should be treated as an archive/reference codebase
+only after cutover validation is complete.
 
 ## Architecture
 
-- FastAPI and Pydantic v2 provide validated, OpenAPI-documented endpoints.
-- PyMuPDF extracts page text, spans, bounding boxes, font signals, and tables.
-- Optional Tesseract OCR handles image-only pages and records confidence warnings.
-- MongoDB remains the source of truth and reuses the backend collections:
-  `ragknowledgesources`, `ragchunks`, `users`, and `anonymoussessions`.
-- Full structured extraction JSON, Markdown, and raw text are stored in
-  `ragextracteddocuments`.
-- Pinecone stores semantic vectors. MongoDB supplies keyword and exact-section search.
-- Reciprocal Rank Fusion combines exact, keyword, and semantic retrieval.
-- Deterministic and OpenAI relevance reranking prioritize exact legal provisions.
-- Repealed provisions are excluded unless the user explicitly asks a historical question.
-- Provision status, commencement/version dates, definitions, tables, and cross-references
-  are persisted with each chunk.
-- A sentence-level citation gate rejects unsupported sections, numbers, claims, or
-  incomplete Act/section/page/version/source provenance.
-- LangGraph orchestrates grounded legal answers and timeline assistant turns.
-- The Node backend remains responsible for login, anonymous sessions, consent, and
-  all non-AI product modules.
+- `app/main.py` boots the complete FastAPI application and registers all product
+  and admin routers.
+- MongoDB remains the primary source of truth for transactional and audit data.
+- Evidence uses authenticated encryption with AES-256-GCM and storage adapters
+  for local disk or S3.
+- RAG supports governed ingestion, chunking, embeddings, approval workflow,
+  retrieval, and citation-aware AI grounding.
+- Admin and frontend clients use the same `/api/v1` FastAPI surface.
 
-## Local setup
-
-Python 3.12 or 3.13 is recommended.
+## Local Setup
 
 ```powershell
 cd safespeak-ai-agent
@@ -34,140 +27,69 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
+copy .env.example .env
 ```
 
-The repository `.env` is copied from `safespeak-backend/.env`, so it uses the same
-MongoDB, JWT, OpenAI, and Pinecone credentials. Review these agent-specific values:
-
-```dotenv
-PORT=8000
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
-KNOWLEDGE_STORAGE_PATH=./storage/knowledge-sources
-LEGAL_REQUIRE_PRODUCTION_GOLDEN=true
-```
-
-Install the pinned official English Tesseract language data for PyMuPDF integrated OCR:
-
-```powershell
-python scripts/install_tessdata.py
-```
-
-Run the service:
+Run the API:
 
 ```powershell
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Open `http://localhost:8000/docs` for Swagger UI and
-`http://localhost:8000/api/v1/health` for health information.
+Health endpoints:
 
-## Run the full project
+- `GET /health`
+- `GET /api/v1/health`
 
-Use three terminals:
+## Environment
 
-```powershell
-cd safespeak-backend
-npm run dev
-```
+Use [`./.env.example`](./.env.example) as the authoritative template.
 
-```powershell
-cd safespeak-ai-agent
-.\.venv\Scripts\Activate.ps1
-uvicorn app.main:app --port 8000 --reload
-```
+Required integration groups:
 
-```powershell
-cd safespeak-frontend
-npm run dev
-```
+- MongoDB
+- JWT and auth recovery
+- Google OAuth
+- OpenAI
+- Pinecone
+- AWS / S3
+- evidence encryption and audit signing keys
+- content/media storage
+- report delivery
+- ScamShield
 
-Run the admin dashboard separately when needed:
+Rules:
 
-```powershell
-cd safespeak-admin
-npm run dev
-```
-
-The frontend and admin retain their normal backend URL and use a dedicated AI URL:
-
-```dotenv
-NEXT_PUBLIC_API_BASE_URL=http://localhost:5000/api/v1
-NEXT_PUBLIC_AI_AGENT_API_BASE_URL=http://localhost:8000/api/v1
-VITE_API_BASE_URL=http://localhost:5000/api/v1
-VITE_AI_AGENT_API_BASE_URL=http://localhost:8000/api/v1
-```
-
-Restart Next.js and Vite after changing environment files.
-
-## Main endpoints
-
-- `POST /api/v1/extract`
-- `POST /api/v1/rag/search`
-- `POST /api/v1/rag/answer`
-- `POST /api/v1/rag/timeline-assistant`
-- `GET|POST|PATCH|DELETE /api/v1/rag/knowledge-sources`
-- `POST /api/v1/rag/knowledge-sources/{id}/document`
-- `POST /api/v1/rag/knowledge-sources/{id}/ingest`
-- `POST /api/v1/rag/knowledge-sources/{id}/reindex`
-- `GET /api/v1/rag/knowledge-sources/{id}/artifacts`
-- `POST /api/v1/ai/triage-report`
-- `POST /api/v1/ai/extract-incident-fields`
-- `POST /api/v1/ai/clarifying-questions`
-- `POST /api/v1/ai/generate-summary`
-- `POST /api/v1/ai/translate`
-- `POST /api/v1/ai/redact-pii`
-
-Backend-only execution endpoints are available under `/api/v1/internal/ai` for model
-completion and embeddings. They require `X-AI-Agent-Token` and must not be exposed to
-browser clients.
-
-Admin endpoints accept the existing SafeSpeak bearer token. Public AI/RAG endpoints
-accept either that bearer token or the existing `X-SafeSpeak-Session` token.
-
-## OCR
-
-OCR is optional because Tesseract is an operating-system dependency:
-
-```powershell
-pip install -e ".[ocr]"
-```
-
-Run `python scripts/install_tessdata.py` and set `RAG_ENABLE_OCR=true`. PyMuPDF then
-uses its integrated Tesseract engine without requiring a system-wide executable.
-Low-quality pages remain marked for mandatory human review. A system Tesseract
-installation remains available as a secondary fallback through `TESSERACT_CMD`.
-
-## Legal golden gate
-
-The synthetic corpus checks the harness only:
-
-```powershell
-python scripts/generate_synthetic_golden.py
-python -m app.evaluation.golden legal-golden/synthetic-manifest.json
-```
-
-Production requires at least eight pinned and legally reviewed Australian legislation
-PDFs. Copy `legal-golden/production-manifest.example.json`, add the reviewed PDFs and
-5 or more expected citation questions per document, then run:
-
-```powershell
-python -m app.evaluation.golden legal-golden/production-manifest.json `
-  --require-production `
-  --output legal-golden/reports/latest.json
-```
-
-When `ENVIRONMENT=production`, SafeSpeak fails closed if that report is missing or
-failed, or if configured OCR is unavailable. Automated extraction cannot replace
-legal review of the golden answers and consolidation dates.
+- Never commit live secrets.
+- Never use fake production encryption keys.
+- Rotate all production secrets before deployment.
+- In production, missing evidence encryption or audit signing keys must fail
+  startup.
 
 ## Verification
 
+Run the validation suite before cutover:
+
 ```powershell
-ruff check app tests scripts
+ruff check .
 pytest
 ```
 
-Before production deployment, create the configured Pinecone index with dimensions
-matching `OPENAI_EMBEDDING_MODEL`, mount durable document and golden-report volumes,
-place the API behind TLS, restrict CORS, rotate development credentials, and obtain
-legal sign-off on every reviewed golden fixture.
+Recommended smoke tests:
+
+- frontend login, refresh, content loading, AI chat, report creation, evidence upload
+- admin login, dashboard, content management, knowledge/RAG flows, analytics
+
+## Deployment
+
+1. Provision MongoDB, object storage, Pinecone, and required API credentials.
+2. Populate `.env` from `.env.example` with environment-specific values.
+3. Run `ruff check .` and `pytest`.
+4. Start FastAPI with your process manager or container runtime.
+5. Point frontend and admin clients at the FastAPI `/api/v1` base URL.
+6. Disable Node traffic only after smoke tests and production checks pass.
+
+## Migration Status
+
+FastAPI is the complete SafeSpeak backend implementation. Remaining go-live work
+is operational hardening, regression validation, and traffic cutover.
